@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monad NFT Value (Testnet)</title>
+<style>
+body { font-family: Arial, sans-serif; background:#0f172a; color:#fff; text-align:center; padding:20px; }
+h1 { color:#60a5fa; }
+input { padding:10px; border-radius:8px; border:1px solid #475569; width:280px; }
+button { background:#7c3aed; color:#fff; padding:12px 20px; border:none; border-radius:8px; cursor:pointer; font-size:16px; margin:5px; }
+#status { margin-top:10px; color:#9ca3af; }
+#nfts { margin-top:20px; display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:15px; }
+.card { background:#1e293b; padding:10px; border-radius:10px; }
+.card img { width:100%; border-radius:8px; height:150px; object-fit:cover; }
+.muted { color:#9ca3af; font-size:14px; }
+</style>
+</head>
+<body>
+<h1>Monad NFT Value (Testnet)</h1>
+<p>Paste any Monad Testnet address to see NFTs & total value</p>
+<input id="addr" placeholder="0xYourAddressHere" />
+<button id="fetchBtn">Fetch NFTs</button>
+<div id="status">Status: Idle</div>
+<div id="total"></div>
+<div id="nfts"></div>
+
+<script>
+const RPC_URL = "wss://monad-testnet.blockvision.org/v1/33AN8MPaYtmLmuxH51GcHaIm3PE";
+
+function hexToDecimal(hex) { return parseInt(hex,16); }
+
+async function fetchTokenURI(ws, contract, tokenId) {
+  return new Promise(resolve => {
+    const id = Math.floor(Math.random()*1000000);
+    const data = "0xc87b56dd" + tokenId.toString(16).padStart(64,"0"); // tokenURI(uint256)
+    ws.send(JSON.stringify({
+      jsonrpc:"2.0",
+      id,
+      method:"eth_call",
+      params:[{to:contract, data}, "latest"]
+    }));
+    ws.onmessage = (msg) => {
+      try {
+        const resp = JSON.parse(msg.data);
+        if(resp.id===id && resp.result){
+          const uriHex = resp.result;
+          let uri = "";
+          if(uriHex && uriHex.startsWith("0x")) {
+            uri = Buffer.from(uriHex.slice(2),'hex').toString().replace(/\0/g,'');
+          }
+          resolve(uri);
+        }
+      } catch { resolve(null); }
+    };
+  });
+}
+
+async function fetchNFTs(address) {
+  document.getElementById("status").innerText = "Connecting to RPC...";
+  const ws = new WebSocket(RPC_URL);
+
+  ws.onopen = () => {
+    document.getElementById("status").innerText = "Connected. Fetching NFTs...";
+    const transferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+    const params = {
+      jsonrpc:"2.0",
+      id:1,
+      method:"eth_getLogs",
+      params:[{
+        fromBlock:"0x0",
+        toBlock:"latest",
+        topics:[transferTopic,null,"0x"+address.toLowerCase().replace("0x","").padStart(64,"0")]
+      }]
+    };
+    ws.send(JSON.stringify(params));
+  };
+
+  ws.onmessage = async (msg) => {
+    try {
+      const data = JSON.parse(msg.data);
+      const logs = data.result || [];
+      if(logs.length===0){
+        document.getElementById("status").innerText = "No NFTs found for this address.";
+        return;
+      }
+
+      let nftData = [];
+      for(let log of logs){
+        const tokenId = hexToDecimal(log.topics[3]);
+        nftData.push({contract:log.address, tokenId});
+      }
+
+      const grid = document.getElementById("nfts");
+      grid.innerHTML = "";
+      document.getElementById("status").innerText = "Fetching metadata...";
+      for(let nft of nftData){
+        try{
+          // Fetch metadata from tokenURI
+          const uriReq = await fetch(`https://api.blockvision.org/v2/monad/contract/metadata?address=${nft.contract}&token_id=${nft.tokenId}`, {
+            headers: { Authorization: "Bearer 33AN8MPaYtmLmuxH51GcHaIm3PE" }
+          });
+          const metaData = await uriReq.json();
+          let name = metaData.name || `Token #${nft.tokenId}`;
+          let image = metaData.image ? metaData.image.replace("ipfs://","https://ipfs.io/ipfs/") : "https://via.placeholder.com/150";
+
+          const card = document.createElement("div");
+          card.className="card";
+          card.innerHTML = `<img src="${image}" alt="NFT"/><div>${name}</div><div class="muted">${nft.contract.slice(0,6)}...${nft.contract.slice(-4)}</div>`;
+          grid.appendChild(card);
+        } catch{
+          const card = document.createElement("div");
+          card.className="card";
+          card.innerHTML = `<img src="https://via.placeholder.com/150" alt="NFT"/><div>Token #${nft.tokenId}</div><div class="muted">${nft.contract.slice(0,6)}...${nft.contract.slice(-4)}</div>`;
+          grid.appendChild(card);
+        }
+      }
+      document.getElementById("status").innerText = `Loaded ${nftData.length} NFTs`;
+      document.getElementById("total").innerHTML = `<h3>Total NFTs: ${nftData.length}</h3>`;
+
+    } catch(err){
+      console.error(err);
+      document.getElementById("status").innerText = "Error parsing data.";
+    }
+  };
+
+  ws.onerror = (err)=>{
+    console.error(err);
+    document.getElementById("status").innerText = "WebSocket error.";
+  };
+}
+
+document.getElementById("fetchBtn").onclick=()=>{
+  const addr = document.getElementById("addr").value.trim();
+  if(!addr){alert("Please enter an address!"); return;}
+  fetchNFTs(addr);
+};
+</script>
+</body>
+</html>
