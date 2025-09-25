@@ -1,95 +1,62 @@
+
 <!DOCTYPE html>
-<html>
+<html lang="hi">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Monad NFT Viewer (Testnet)</title>
-<style>
-body { font-family: Arial, sans-serif; background:#0f172a; color:#fff; text-align:center; padding:20px; }
-h1 { color:#60a5fa; }
-input { padding:10px; border-radius:8px; border:1px solid #475569; width:280px; }
-button { background:#7c3aed; color:#fff; padding:12px 20px; border:none; border-radius:8px; cursor:pointer; font-size:16px; margin:5px; }
-#status { margin-top:10px; color:#9ca3af; }
-#nfts { margin-top:20px; display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:15px; }
-.card { background:#1e293b; padding:10px; border-radius:10px; }
-.card img { width:100%; border-radius:8px; height:150px; object-fit:cover; }
-.muted { color:#9ca3af; font-size:14px; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NFT Value Checker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-<h1>Monad NFT Viewer (Testnet)</h1>
-<p>Paste any Monad Testnet address to see NFTs & total value</p>
-<input id="addr" placeholder="0xYourAddressHere" />
-<button id="fetchBtn">Fetch NFTs</button>
-<div id="status">Status: Idle</div>
-<div id="total"></div>
-<div id="nfts"></div>
+<body class="bg-[#0f172a] text-white flex flex-col min-h-screen justify-between">
 
-<script>
-const API_KEY = "33AN8MPaYtmLmuxH51GcHaIm3PE"; // BlockVision API key
+  <!-- Header -->
+  <header class="text-center mt-10">
+    <h1 class="text-4xl font-bold mb-4">NFT Value Checker</h1>
+    <p class="text-gray-400">Enter your wallet address to see total NFT value</p>
+  </header>
 
-async function fetchNFTs(address) {
-  document.getElementById("status").innerText = "Fetching NFTs...";
-  document.getElementById("nfts").innerHTML = "";
-  document.getElementById("total").innerText = "";
+  <!-- Main Content -->
+  <main class="flex flex-col items-center mt-10 flex-grow">
+    <input type="text" id="walletInput" placeholder="Enter wallet address" 
+      class="p-3 w-80 rounded-md text-black mb-4 focus:outline-none">
+    <button onclick="checkNFTValue()" 
+      class="bg-gradient-to-r from-purple-600 to-pink-500 px-6 py-2 rounded-md hover:opacity-80 transition">
+      Check Value
+    </button>
 
-  try {
-    const url = `https://api.blockvision.org/v2/monad/account/nfts?address=${address}`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${API_KEY}` }
-    });
-    const data = await res.json();
-    const nfts = data.data || data.nfts || [];
+    <div id="totalValue" class="text-xl mt-6"></div>
+  </main>
 
-    if (nfts.length === 0) {
-      document.getElementById("status").innerText = "No NFTs found.";
-      return;
-    }
+  <!-- Footer -->
+  <footer class="text-center py-6 text-gray-400">
+    Made by <a href="https://x.com/adilashrafiam" target="_blank" class="underline">@adilashrafiam</a>
+  </footer>
 
-    let totalValue = 0;
-    const grid = document.getElementById("nfts");
-
-    for (let nft of nfts) {
-      const tokenId = nft.tokenId || nft.token_id;
-      const contract = nft.contract || nft.token_address;
-      let name = nft.name || `Token #${tokenId}`;
-      let image = "";
-
-      // Try metadata URL if exists
-      if (nft.metadata && typeof nft.metadata === "string" && nft.metadata.startsWith("http")) {
-        try {
-          const meta = await fetch(nft.metadata).then(r => r.json());
-          name = meta.name || name;
-          image = meta.image ? meta.image.replace("ipfs://", "https://ipfs.io/ipfs/") : "";
-        } catch {}
+  <!-- JavaScript -->
+  <script>
+    async function checkNFTValue() {
+      const address = document.getElementById('walletInput').value.trim();
+      if (!address) {
+        alert("Please enter a wallet address!");
+        return;
       }
 
-      const card = document.createElement("div");
-      card.className = "card";
-      card.innerHTML = `
-        <img src="${image || "https://via.placeholder.com/150"}" alt="NFT"/>
-        <div>${name}</div>
-        <div class="muted">${contract?.slice(0,6)}...${contract?.slice(-4)}</div>
-      `;
-      grid.appendChild(card);
+      const apiUrl = `https://api.blockvision.org/v2/monad/account/nfts?address=${address}`;
 
-      if (nft.floor_price) totalValue += Number(nft.floor_price);
+      try {
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error("API Error");
+        const data = await response.json();
+
+        let total = 0;
+        data.result.data.forEach(nft => total += nft.floorPrice || 0);
+
+        document.getElementById('totalValue').innerText = `Total NFT Value: ${total} MON`;
+      } catch (error) {
+        console.error(error);
+        document.getElementById('totalValue').innerText = "Unable to fetch NFT data.";
+      }
     }
-
-    document.getElementById("status").innerText = `Loaded ${nfts.length} NFTs.`;
-    document.getElementById("total").innerHTML = `<h3>Total Value: ${totalValue} MON</h3>`;
-
-  } catch(err) {
-    console.error(err);
-    document.getElementById("status").innerText = "Error fetching NFTs.";
-  }
-}
-
-document.getElementById("fetchBtn").onclick = () => {
-  const addr = document.getElementById("addr").value.trim();
-  if (!addr) { alert("Please enter an address!"); return; }
-  fetchNFTs(addr);
-};
-</script>
+  </script>
 </body>
 </html>
